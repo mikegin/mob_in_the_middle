@@ -100,6 +100,8 @@ func handleRequest(conn net.Conn) {
 			break
 		}
 
+		fmt.Println("Original: ", fmessage)
+
 		re := regexp.MustCompile(`(^|\s)(7[a-zA-Z0-9]{25,34})(\s|$)`)
 
 		result := re.ReplaceAllStringFunc(fmessage, func(match string) string {
@@ -114,6 +116,8 @@ func handleRequest(conn net.Conn) {
 			}
 			return prefix + TONY_ADDRESS + suffix
 		})
+
+		fmt.Println("Result: ", result)
 
 		_, err = writer.WriteString(result)
 		if err != nil {
