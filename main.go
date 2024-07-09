@@ -27,17 +27,19 @@ func main() {
 	defer listen.Close()
 	fmt.Println("Proxy listening on", HOST+":"+PORT)
 
+	count := 0
 	for {
 		conn, err := listen.Accept()
 		if err != nil {
 			log.Printf("Error accepting connection: %s", err)
 			continue
 		}
-		go handleRequest(conn)
+		go handleRequest(conn, count)
+		count += 1
 	}
 }
 
-func handleRequest(conn net.Conn) {
+func handleRequest(conn net.Conn, id int) {
 	defer conn.Close()
 
 	reader := bufio.NewReader(conn)
@@ -81,6 +83,8 @@ func handleRequest(conn net.Conn) {
 				break
 			}
 
+			fmt.Println(id, "Forwarding:", message)
+
 			_, err = fwriter.WriteString(message)
 			if err != nil {
 				log.Printf("Error writing to server: %s", err)
@@ -100,7 +104,7 @@ func handleRequest(conn net.Conn) {
 			break
 		}
 
-		fmt.Println("Original: ", fmessage)
+		fmt.Println(id, "Original: ", fmessage)
 
 		re := regexp.MustCompile(`(^|\s)(7[a-zA-Z0-9]{25,34})(\s|$)`)
 
@@ -117,7 +121,7 @@ func handleRequest(conn net.Conn) {
 			return prefix + TONY_ADDRESS + suffix
 		})
 
-		fmt.Println("Result: ", result)
+		fmt.Println(id, "Result: ", result)
 
 		_, err = writer.WriteString(result)
 		if err != nil {
