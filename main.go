@@ -6,17 +6,18 @@ import (
 	"io"
 	"log"
 	"net"
+	"regexp"
 	"strings"
-	"unicode"
+)
+
+const (
+	HOST         = "0.0.0.0"
+	PORT         = "8080"
+	TYPE         = "tcp"
+	TONY_ADDRESS = "7YWHMfk9JZe0LM0g1ZauHuiSxhI"
 )
 
 func main() {
-	const (
-		HOST = "0.0.0.0"
-		PORT = "8080"
-		TYPE = "tcp"
-	)
-
 	fmt.Println("Starting TCP Chat Proxy...")
 	listen, err := net.Listen(TYPE, HOST+":"+PORT)
 	if err != nil {
@@ -99,30 +100,22 @@ func handleRequest(conn net.Conn) {
 			break
 		}
 
-		a := strings.Split(fmessage[:len(fmessage)-1], " ")
+		re := regexp.MustCompile(`(^|\s)(7[a-zA-Z0-9]{25,34})(\s|$)`)
 
-		for i, s := range a {
-			l := len(s)
-			isAddress := 26 <= l && l <= 35 && s[0] == '7'
-
-			if !isAddress {
-				continue
+		result := re.ReplaceAllStringFunc(fmessage, func(match string) string {
+			// Check if the match contains leading or trailing whitespace
+			prefix := ""
+			suffix := ""
+			if strings.HasPrefix(match, " ") {
+				prefix = " "
 			}
-
-			for _, c := range s {
-				if !unicode.IsLetter(c) && !unicode.IsNumber(c) {
-					isAddress = false
-					break
-				}
+			if strings.HasSuffix(match, " ") {
+				suffix = " "
 			}
+			return prefix + TONY_ADDRESS + suffix
+		})
 
-			if isAddress {
-				a[i] = "7YWHMfk9JZe0LM0g1ZauHuiSxhI"
-			}
-		}
-
-		result := strings.Join(a, " ")
-		_, err = writer.WriteString(result + "\n")
+		_, err = writer.WriteString(result)
 		if err != nil {
 			log.Printf("Error writing to client: %s", err)
 			break

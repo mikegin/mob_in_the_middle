@@ -5,7 +5,7 @@ https://protohackers.com/problem/5
 ### run the tcp server
 ```
 go build .
-./tcp_chat
+./mob_in_the_middle
 ```
 
 ### Example Chat Clients
