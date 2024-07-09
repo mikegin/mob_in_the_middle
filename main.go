@@ -8,6 +8,7 @@ import (
 	"net"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 const (
@@ -35,47 +36,34 @@ func main() {
 			continue
 		}
 		go handleRequest(conn, count)
-		count += 1
+		count++
 	}
 }
 
 func handleRequest(conn net.Conn, id int) {
 	defer conn.Close()
 
-	reader := bufio.NewReader(conn)
-	writer := bufio.NewWriter(conn)
-
 	fconn, err := net.Dial("tcp", "chat.protohackers.com:16963")
 	if err != nil {
-		fmt.Printf("Connection failed: %v\n", err)
+		log.Printf("Connection to upstream server failed: %v\n", err)
 		return
 	}
-
 	defer fconn.Close()
 
-	freader := bufio.NewReader(fconn)
-	fwriter := bufio.NewWriter(fconn)
+	clientReader := bufio.NewReader(conn)
+	clientWriter := bufio.NewWriter(conn)
 
-	// Initial welcome message from server
-	message, err := freader.ReadString('\n')
-	if err != nil {
-		if err != io.EOF {
-			log.Printf("Error reading from connection: %s", err)
-		}
-		return
-	}
+	serverReader := bufio.NewReader(fconn)
+	serverWriter := bufio.NewWriter(fconn)
 
-	_, err = writer.WriteString(message)
-	if err != nil {
-		log.Printf("Error writing to client: %s", err)
-		return
-	}
-	writer.Flush()
+	var wg sync.WaitGroup
+	wg.Add(2)
 
-	// goroutine to forward messages
+	// Goroutine to forward messages from client to server
 	go func() {
+		defer wg.Done()
 		for {
-			message, err := reader.ReadString('\n')
+			message, err := clientReader.ReadString('\n')
 			if err != nil {
 				if err != io.EOF {
 					log.Printf("Error reading from client: %s", err)
@@ -83,51 +71,56 @@ func handleRequest(conn net.Conn, id int) {
 				break
 			}
 
-			fmt.Println(id, "Forwarding:", message)
+			fmt.Println(id, "Forwarding to server:", message)
 
-			_, err = fwriter.WriteString(message)
+			_, err = serverWriter.WriteString(message)
 			if err != nil {
 				log.Printf("Error writing to server: %s", err)
 				break
 			}
-			fwriter.Flush()
+			serverWriter.Flush()
 		}
 	}()
 
-	// read, modify and respond
-	for {
-		fmessage, err := freader.ReadString('\n')
-		if err != nil {
-			if err != io.EOF {
-				log.Printf("Error reading from server: %s", err)
-			}
-			break
-		}
-
-		fmt.Println(id, "Original: ", fmessage)
-
+	// Goroutine to read, modify, and forward messages from server to client
+	go func() {
+		defer wg.Done()
 		re := regexp.MustCompile(`(^|\s)(7[a-zA-Z0-9]{25,34})(\s|$)`)
 
-		result := re.ReplaceAllStringFunc(fmessage, func(match string) string {
-			// Check if the match contains leading or trailing whitespace
-			prefix := ""
-			suffix := ""
-			if strings.HasPrefix(match, " ") {
-				prefix = " "
+		for {
+			message, err := serverReader.ReadString('\n')
+			if err != nil {
+				if err != io.EOF {
+					log.Printf("Error reading from server: %s", err)
+				}
+				break
 			}
-			if strings.HasSuffix(match, " ") {
-				suffix = " "
+
+			fmt.Println(id, "Original from server: ", message)
+
+			result := re.ReplaceAllStringFunc(message, func(match string) string {
+				prefix := ""
+				suffix := ""
+				if strings.HasPrefix(match, " ") {
+					prefix = " "
+				}
+				if strings.HasSuffix(match, " ") {
+					suffix = " "
+				}
+				return prefix + TONY_ADDRESS + suffix
+			})
+
+			fmt.Println(id, "Modified to client: ", result)
+
+			_, err = clientWriter.WriteString(result)
+			if err != nil {
+				log.Printf("Error writing to client: %s", err)
+				break
 			}
-			return prefix + TONY_ADDRESS + suffix
-		})
-
-		fmt.Println(id, "Result: ", result)
-
-		_, err = writer.WriteString(result)
-		if err != nil {
-			log.Printf("Error writing to client: %s", err)
-			break
+			clientWriter.Flush()
 		}
-		writer.Flush()
-	}
+	}()
+
+	// Wait for both goroutines to finish
+	wg.Wait()
 }
